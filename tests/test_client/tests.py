@@ -158,11 +158,12 @@ class ClientTest(TestCase):
             self.client.post("/post_view/", {"value": None})
 
     def test_query_view(self):
-        body_data = {"value": 37}
-        response = self.client.query("/query_view/", body_data)
+        response = self.client.query(
+            "/query_view/", {"value": 37}, content_type="application/json"
+        )
 
         self.assertContains(response, "Data received")
-        self.assertEqual(response.context["data"], "37")
+        self.assertEqual(response.context["data"], 37)
         self.assertEqual(response.templates[0].name, "QUERY Template")
 
     def test_json_serialization(self):
@@ -1318,7 +1319,9 @@ class AsyncClientTest(TestCase):
         self.assertContains(response, "Data received: 37 is the value.")
 
     async def test_query_data(self):
-        response = await self.async_client.query("/query_view/", {"value": 37})
+        response = await self.async_client.query(
+            "/query_view/", {"value": 37}, content_type="application/json"
+        )
         self.assertContains(response, "Data received: 37 is the value.")
 
     async def test_body_read_on_get_data(self):

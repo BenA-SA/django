@@ -97,18 +97,17 @@ def post_view(request):
 
 
 def query_view(request):
-    if request.method == "QUERY":
-        if request.POST:
-            t = Template(
-                "Data received: {{ data }} is the value.", name="QUERY Template"
-            )
-            c = Context({"data": request.POST["value"]})
-        else:
-            # Implement as necessary for testing
-            raise NotImplementedError()
-    else:
+    """
+    A view that reads the content of a QUERY request.
+
+    QUERY content is not form data, so it is parsed from the body rather than
+    read off request.POST.
+    """
+    if request.method != "QUERY":
         t = Template("Viewing GET page.", name="Empty GET Template")
-        c = Context()
+        return HttpResponse(t.render(Context()))
+    t = Template("Data received: {{ data }} is the value.", name="QUERY Template")
+    c = Context({"data": json.loads(request.body)["value"]})
     return HttpResponse(t.render(c))
 
 

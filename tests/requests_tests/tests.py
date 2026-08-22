@@ -347,41 +347,55 @@ class RequestsTests(SimpleTestCase):
         Reading from request is allowed after accessing request contents as
         POST or body.
         """
-        for method in ["POST", "QUERY"]:
-            with self.subTest(method=method):
-                payload = FakePayload("name=value")
-                request = WSGIRequest(
-                    {
-                        "REQUEST_METHOD": method,
-                        "CONTENT_TYPE": "application/x-www-form-urlencoded",
-                        "CONTENT_LENGTH": len(payload),
-                        "wsgi.input": payload,
-                    }
-                )
-                self.assertEqual(request.POST, {"name": ["value"]})
-                self.assertEqual(request.body, b"name=value")
-                self.assertEqual(request.read(), b"name=value")
+        payload = FakePayload("name=value")
+        request = WSGIRequest(
+            {
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": "application/x-www-form-urlencoded",
+                "CONTENT_LENGTH": len(payload),
+                "wsgi.input": payload,
+            }
+        )
+        self.assertEqual(request.POST, {"name": ["value"]})
+        self.assertEqual(request.body, b"name=value")
+        self.assertEqual(request.read(), b"name=value")
+
+    def test_query_content_not_in_post(self):
+        """
+        QUERY request content is available from body, not POST, even when the
+        content type is a form type.
+        """
+        payload = FakePayload("name=value")
+        request = WSGIRequest(
+            {
+                "REQUEST_METHOD": "QUERY",
+                "CONTENT_TYPE": "application/x-www-form-urlencoded",
+                "CONTENT_LENGTH": len(payload),
+                "wsgi.input": payload,
+            }
+        )
+        self.assertEqual(request.body, b"name=value")
+        self.assertEqual(request.POST, {})
+        self.assertEqual(request.FILES, {})
 
     def test_value_after_read(self):
         """
         Construction of POST or body is not allowed after reading
         from request.
         """
-        for method in ["POST", "QUERY"]:
-            with self.subTest(method=method):
-                payload = FakePayload("name=value")
-                request = WSGIRequest(
-                    {
-                        "REQUEST_METHOD": method,
-                        "CONTENT_TYPE": "application/x-www-form-urlencoded",
-                        "CONTENT_LENGTH": len(payload),
-                        "wsgi.input": payload,
-                    }
-                )
-                self.assertEqual(request.read(2), b"na")
-                with self.assertRaises(RawPostDataException):
-                    request.body
-                self.assertEqual(request.POST, {})
+        payload = FakePayload("name=value")
+        request = WSGIRequest(
+            {
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": "application/x-www-form-urlencoded",
+                "CONTENT_LENGTH": len(payload),
+                "wsgi.input": payload,
+            }
+        )
+        self.assertEqual(request.read(2), b"na")
+        with self.assertRaises(RawPostDataException):
+            request.body
+        self.assertEqual(request.POST, {})
 
     def test_non_ascii_POST(self):
         payload = FakePayload(urlencode({"key": "España"}))

@@ -449,7 +449,7 @@ class HttpRequest:
         """
         Populate self._post and self._files if the content-type is a form type
         """
-        if self.method not in ["POST", "QUERY"]:
+        if self.method != "POST":
             self._post, self._files = (
                 QueryDict(encoding=self._encoding),
                 MultiValueDict(),
