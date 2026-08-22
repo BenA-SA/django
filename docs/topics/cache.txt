@@ -641,12 +641,24 @@ Then, add the following required settings to your Django settings file:
   the site, or some other string that is unique to this Django instance, to
   prevent key collisions. Use an empty string if you don't care.
 
-``FetchFromCacheMiddleware`` caches GET and HEAD responses with status 200,
-where the request and response headers allow. Responses to requests for the
+``FetchFromCacheMiddleware`` caches GET, HEAD, and QUERY responses with status
+200, where the request and response headers allow. Responses to requests for the
 same URL with different query parameters are considered to be unique pages and
 are cached separately. This middleware expects that a HEAD request is answered
 with the same response headers as the corresponding GET request; in which case
 it can return a cached GET response for HEAD request.
+
+Two QUERY requests to the same URL are likewise distinct pages when their
+content differs, so the cache key for a QUERY request includes a digest of that
+content. A cached QUERY response is never returned for a HEAD request, since the
+two do not share a cache key. Where the content cannot be read -- because the
+view consumed the request stream itself -- the response is not cached at all,
+rather than stored under a key that ignores it.
+
+.. versionchanged:: 6.2
+
+    Caching of QUERY responses was added. Cache keys for other methods are
+    unchanged.
 
 Additionally, ``UpdateCacheMiddleware`` automatically sets a few headers in
 each :class:`~django.http.HttpResponse` which affect :ref:`downstream caches

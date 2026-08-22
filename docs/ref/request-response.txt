@@ -43,6 +43,9 @@ All attributes should be considered read-only, unless stated otherwise.
     XML payload etc. For processing conventional form data, use
     :attr:`HttpRequest.POST`.
 
+    This is also where the content of a ``QUERY`` request is read from, whatever
+    its content type, since browsers cannot submit forms with that method.
+
     You can also read from an ``HttpRequest`` using a file-like interface with
     :meth:`HttpRequest.read` or :meth:`HttpRequest.readline`. Accessing
     the ``body`` attribute *after* reading the request with either of these I/O
@@ -77,6 +80,17 @@ All attributes should be considered read-only, unless stated otherwise.
             do_something()
         elif request.method == "POST":
             do_something_else()
+
+    .. versionchanged:: 6.2
+
+        Support for the ``QUERY`` method, defined in :rfc:`10008`, was added.
+        ``QUERY`` is safe and idempotent like ``GET``, but carries its
+        parameters in the request content rather than the query string, which
+        suits searching and filtering that a query string cannot express
+        comfortably. Read that content from :attr:`HttpRequest.body`::
+
+            if request.method == "QUERY":
+                criteria = json.loads(request.body)
 
 .. attribute:: HttpRequest.encoding
 
@@ -118,6 +132,10 @@ All attributes should be considered read-only, unless stated otherwise.
     request.method == "POST"`` (see :attr:`HttpRequest.method`).
 
     ``POST`` does *not* include file-upload information. See :attr:`FILES`.
+
+    ``POST`` is populated for the ``POST`` method only. The content of a
+    ``QUERY`` request is read from :attr:`HttpRequest.body`, even when it is
+    sent with a form content type.
 
 .. attribute:: HttpRequest.COOKIES
 

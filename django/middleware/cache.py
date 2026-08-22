@@ -135,6 +135,11 @@ class UpdateCacheMiddleware(MiddlewareMixin):
             cache_key = learn_cache_key(
                 request, response, timeout, self.key_prefix, cache=self.cache
             )
+            if cache_key is None:
+                # No correct key could be built, e.g. a QUERY request whose
+                # content the view consumed. Skip caching rather than store
+                # under a key that ignores the content.
+                return response
             if hasattr(response, "render") and callable(response.render):
                 response.add_post_render_callback(
                     lambda r: self.cache.set(cache_key, r, timeout)
@@ -167,15 +172,22 @@ class FetchFromCacheMiddleware(MiddlewareMixin):
         Check whether the page is already cached and return the cached
         version if available.
         """
-        if request.method not in ("GET", "HEAD"):
+        if request.method not in ("GET", "HEAD", "QUERY"):
             request._cache_update_cache = False
             return None  # Don't bother checking the cache.
 
-        # try and get the cached GET response
-        cache_key = get_cache_key(request, self.key_prefix, "GET", cache=self.cache)
+        # the cached GET method response may also be used for the HEAD method
+        if request.method in ("GET", "HEAD"):
+            cache_key = get_cache_key(request, self.key_prefix, "GET", cache=self.cache)
+        else:
+            cache_key = get_cache_key(
+                request, self.key_prefix, request.method, cache=self.cache
+            )
+
         if cache_key is None:
             request._cache_update_cache = True
             return None  # No cache information available, need to rebuild.
+
         response = self.cache.get(cache_key)
         # if it wasn't found and we are looking for a HEAD, try looking just
         # for that
