@@ -114,8 +114,8 @@ class CommonMiddlewareTest(SimpleTestCase):
     def test_append_slash_no_redirect_in_DEBUG(self):
         """
         While in debug mode, an exception is raised with a warning
-        when a failed attempt is made to DELETE, POST, PUT, or PATCH to an URL
-        which would normally be redirected to a slashed version.
+        when a failed attempt is made to DELETE, POST, PUT, PATCH or QUERY to
+        an URL which would normally be redirected to a slashed version.
         """
         msg = "maintaining %s data. Change your form to point to testserver/slash/"
         request = self.rf.get("/slash")
@@ -131,6 +131,10 @@ class CommonMiddlewareTest(SimpleTestCase):
         with self.assertRaisesMessage(RuntimeError, msg % request.method):
             CommonMiddleware(get_response_404)(request)
         request = self.rf.delete("/slash")
+        with self.assertRaisesMessage(RuntimeError, msg % request.method):
+            CommonMiddleware(get_response_404)(request)
+        request = self.rf.get("/slash")
+        request.method = "QUERY"
         with self.assertRaisesMessage(RuntimeError, msg % request.method):
             CommonMiddleware(get_response_404)(request)
 
@@ -546,16 +550,16 @@ class BrokenLinkEmailsMiddlewareTest(SimpleTestCase):
         self.assertEqual(mail.outbox[0].body, "custom message")
 
 
-@override_settings(ROOT_URLCONF="middleware.cond_get_urls")
-class ConditionalGetMiddlewareTest(SimpleTestCase):
+class ConditionalGetMiddlewareTestBase:
     request_factory = RequestFactory()
+    method = None
 
     def setUp(self):
-        self.req = self.request_factory.get("/")
+        self.req = getattr(self.request_factory, self.method.lower())("/")
         self.resp_headers = {}
 
     def get_response(self, req):
-        resp = self.client.get(req.path_info)
+        resp = getattr(self.client, self.method.lower())(req.path_info)
         for key, value in self.resp_headers.items():
             resp[key] = value
         return resp
@@ -647,7 +651,7 @@ class ConditionalGetMiddlewareTest(SimpleTestCase):
 
     def test_if_none_match_and_redirect(self):
         def get_response(req):
-            resp = self.client.get(req.path_info)
+            resp = getattr(self.client, self.method.lower())(req.path_info)
             resp["ETag"] = "spam"
             resp["Location"] = "/"
             resp.status_code = 301
@@ -659,7 +663,7 @@ class ConditionalGetMiddlewareTest(SimpleTestCase):
 
     def test_if_none_match_and_client_error(self):
         def get_response(req):
-            resp = self.client.get(req.path_info)
+            resp = getattr(self.client, self.method.lower())(req.path_info)
             resp["ETag"] = "spam"
             resp.status_code = 400
             return resp
@@ -700,7 +704,7 @@ class ConditionalGetMiddlewareTest(SimpleTestCase):
 
     def test_if_modified_since_and_redirect(self):
         def get_response(req):
-            resp = self.client.get(req.path_info)
+            resp = getattr(self.client, self.method.lower())(req.path_info)
             resp["Last-Modified"] = "Sat, 12 Feb 2011 17:35:44 GMT"
             resp["Location"] = "/"
             resp.status_code = 301
@@ -712,7 +716,7 @@ class ConditionalGetMiddlewareTest(SimpleTestCase):
 
     def test_if_modified_since_and_client_error(self):
         def get_response(req):
-            resp = self.client.get(req.path_info)
+            resp = getattr(self.client, self.method.lower())(req.path_info)
             resp["Last-Modified"] = "Sat, 12 Feb 2011 17:35:44 GMT"
             resp.status_code = 400
             return resp
@@ -728,7 +732,7 @@ class ConditionalGetMiddlewareTest(SimpleTestCase):
         """
 
         def get_response(req):
-            resp = self.client.get(req.path_info)
+            resp = getattr(self.client, self.method.lower())(req.path_info)
             resp["Date"] = "Sat, 12 Feb 2011 17:35:44 GMT"
             resp["Last-Modified"] = "Sat, 12 Feb 2011 17:35:44 GMT"
             resp["Expires"] = "Sun, 13 Feb 2011 17:35:44 GMT"
@@ -794,6 +798,18 @@ class ConditionalGetMiddlewareTest(SimpleTestCase):
         request = self.request_factory.head("/")
         conditional_get_response = ConditionalGetMiddleware(get_200_response)(request)
         self.assertNotIn("ETag", conditional_get_response)
+
+
+@override_settings(ROOT_URLCONF="middleware.cond_get_urls")
+class ConditionalGetMiddlewareGetTest(ConditionalGetMiddlewareTestBase, SimpleTestCase):
+    method = "GET"
+
+
+@override_settings(ROOT_URLCONF="middleware.cond_get_urls")
+class ConditionalGetMiddlewareQueryTest(
+    ConditionalGetMiddlewareTestBase, SimpleTestCase
+):
+    method = "QUERY"
 
 
 class XFrameOptionsMiddlewareTest(SimpleTestCase):

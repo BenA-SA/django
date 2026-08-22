@@ -268,7 +268,7 @@ Use the ``django.test.Client`` class to make requests.
         :class:`~django.core.serializers.json.DjangoJSONEncoder` by default,
         and can be overridden by providing a ``json_encoder`` argument to
         :class:`Client`. This serialization also happens for :meth:`put`,
-        :meth:`patch`, and :meth:`delete` requests.
+        :meth:`patch`, :meth:`delete`, and :meth:`query` requests.
 
         If you provide any other ``content_type`` (e.g. :mimetype:`text/xml`
         for an XML payload), the contents of ``data`` are sent as-is in the
@@ -366,6 +366,27 @@ Use the ``django.test.Client`` class to make requests.
 
         When ``data`` is provided, it is used as the request body, and
         a ``Content-Type`` header is set to ``content_type``.
+
+        The ``follow``, ``secure``, ``headers``, ``query_params``, and
+        ``extra`` parameters act the same as for :meth:`Client.get`.
+
+    .. method:: Client.query(path, data='', content_type='application/octet-stream', follow=False, secure=False, *, headers=None, query_params=None, **extra)
+
+        .. versionadded:: 6.2
+
+        Makes a QUERY request on the provided ``path`` and returns a
+        ``Response`` object. Useful for testing search and filtering endpoints
+        whose criteria are too large or too structured for a query string.
+
+        When ``data`` is provided, it is used as the request content, and a
+        ``Content-Type`` header is set to ``content_type``. As for
+        :meth:`put` and :meth:`patch`, a dict, list, or tuple is serialized
+        with :func:`json.dumps` when ``content_type`` is
+        :mimetype:`application/json`.
+
+        The view reads that content from :attr:`HttpRequest.body
+        <django.http.HttpRequest.body>`; it is not available on
+        ``request.POST``, even for a form content type.
 
         The ``follow``, ``secure``, ``headers``, ``query_params``, and
         ``extra`` parameters act the same as for :meth:`Client.get`.
