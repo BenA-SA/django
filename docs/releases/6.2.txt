@@ -31,6 +31,42 @@ only officially support the latest release of each series.
 What's new in Django 6.2
 ========================
 
+Support for the HTTP QUERY method
+---------------------------------
+
+Django now supports the ``QUERY`` HTTP method defined in :rfc:`10008`. Like
+``GET`` it is safe and idempotent, and like ``POST`` it carries a request
+content, which suits searching and filtering whose criteria are too large or too
+structured to sit comfortably in a query string.
+
+Views read that content from :attr:`HttpRequest.body
+<django.http.HttpRequest.body>`, and handle it like any other method::
+
+    class SearchView(View):
+        def query(self, request, *args, **kwargs):
+            criteria = json.loads(request.body)
+            return JsonResponse(search(**criteria))
+
+Because ``QUERY`` is safe, it is accepted by
+:func:`~django.views.decorators.http.require_safe`, is excluded from CSRF
+checks, and takes part in conditional request handling and response caching. Its
+cache key includes a digest of the request content, so two different queries to
+the same URL do not share a cached response. Cache keys for every other method
+are unchanged.
+
+A ``QUERY`` handler must not change state. Safety is what allows caches and
+clients to repeat, prefetch, or retry the request, and what makes exemption from
+CSRF checks sound.
+
+The test client gained a matching
+:meth:`~django.test.Client.query` method on both its synchronous and
+asynchronous versions.
+
+Note that browsers cannot yet send ``QUERY``: ``<form method="query">`` falls
+back to ``GET`` and drops the content. It is reachable from ``fetch()`` and from
+non-browser clients, though a cross-origin ``QUERY`` is not CORS-safelisted and
+always triggers a preflight.
+
 Minor features
 --------------
 
