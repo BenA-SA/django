@@ -21,7 +21,7 @@ from hashlib import md5
 
 from django.conf import settings
 from django.core.cache import caches
-from django.http import HttpResponse, HttpResponseNotModified
+from django.http import HttpResponse, HttpResponseNotModified, RawPostDataException
 from django.utils.http import (
     http_date,
     parse_etags,
@@ -352,7 +352,13 @@ def _i18n_cache_key_suffix(request, cache_key):
 
 
 def _generate_cache_key(request, method, headerlist, key_prefix):
-    """Return a cache key from the headers given in the header list."""
+    """
+    Return a cache key from the headers given in the header list.
+
+    Return None if no correct key can be built. That happens for a QUERY
+    request whose content has already been read, since a key that ignored the
+    content could serve one query's response to a different query.
+    """
     ctx = md5(usedforsecurity=False)
     for header in headerlist:
         value = request.META.get(header)
@@ -362,14 +368,25 @@ def _generate_cache_key(request, method, headerlist, key_prefix):
         # Use the netstring delimiter (with trailing comma).
         ctx.update(b"%d:%s," % (len(data), data))
     url = md5(request.build_absolute_uri().encode("ascii"), usedforsecurity=False)
-    body = md5(request.body, usedforsecurity=False)
-    cache_key = "views.decorators.cache.cache_page.%s.%s.%s.%s.%s" % (
+    cache_key = "views.decorators.cache.cache_page.%s.%s.%s.%s" % (
         key_prefix,
         method,
         url.hexdigest(),
         ctx.hexdigest(),
-        body.hexdigest(),
     )
+    if method == "QUERY":
+        # RFC 10008 Section 2: the content of a QUERY request is part of what
+        # identifies it, so responses to different contents must not share a
+        # cache entry. Only QUERY keys carry the content digest, leaving keys
+        # for every other method byte-for-byte unchanged.
+        try:
+            content = request.body
+        except RawPostDataException:
+            return None
+        cache_key = "%s.%s" % (
+            cache_key,
+            md5(content, usedforsecurity=False).hexdigest(),
+        )
     return _i18n_cache_key_suffix(request, cache_key)
 
 

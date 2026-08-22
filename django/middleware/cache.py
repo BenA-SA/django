@@ -135,6 +135,11 @@ class UpdateCacheMiddleware(MiddlewareMixin):
             cache_key = learn_cache_key(
                 request, response, timeout, self.key_prefix, cache=self.cache
             )
+            if cache_key is None:
+                # No correct key could be built, e.g. a QUERY request whose
+                # content the view consumed. Skip caching rather than store
+                # under a key that ignores the content.
+                return response
             if hasattr(response, "render") and callable(response.render):
                 response.add_post_render_callback(
                     lambda r: self.cache.set(cache_key, r, timeout)
