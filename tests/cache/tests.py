@@ -2373,6 +2373,23 @@ class CacheUtils(SimpleTestCase):
             "beaf87a9a99ee81c673ea2d67ccbec2a.d41d8cd98f00b204e9800998ecf8427e",
         )
 
+    def test_get_cache_key_with_content(self):
+        request = self.factory.query(
+            self.path, {"test": 1}, content_type="application/json"
+        )
+        response = HttpResponse()
+        # Expect None if no headers have been set yet.
+        self.assertIsNone(get_cache_key(request))
+        # Set headers to an empty list.
+        learn_cache_key(request, response)
+        # The content is taken into account.
+        self.assertEqual(
+            get_cache_key(request, method="QUERY"),
+            "views.decorators.cache.cache_page.settingsprefix.QUERY."
+            "18a03f9c9649f7d684af5db3524f5c99.d41d8cd98f00b204e9800998ecf8427e."
+            "96db854b55b71e6b6298e93df0b6a176",
+        )
+
     def test_cache_key_varies_by_url(self):
         """
         get_cache_key keys differ by fully-qualified URL instead of path
@@ -2382,6 +2399,23 @@ class CacheUtils(SimpleTestCase):
         request2 = self.factory.get(self.path, headers={"host": "sub-2.example.com"})
         learn_cache_key(request2, HttpResponse())
         self.assertNotEqual(get_cache_key(request1), get_cache_key(request2))
+
+    def test_cache_key_varies_by_content(self):
+        """
+        get_cache_key keys differ by content
+        """
+        request1 = self.factory.query(
+            self.path, data={"key": "value-1"}, content_type="application/json"
+        )
+        learn_cache_key(request1, HttpResponse())
+        request2 = self.factory.query(
+            self.path, data={"key": "value-2"}, content_type="application/json"
+        )
+        learn_cache_key(request2, HttpResponse())
+        self.assertNotEqual(
+            get_cache_key(request1, method="QUERY"),
+            get_cache_key(request2, method="QUERY"),
+        )
 
     def test_learn_cache_key(self):
         request = self.factory.head(self.path)
@@ -2842,6 +2876,12 @@ def hello_world_view_vary_headers_includes_asterisk(request, value):
     return response
 
 
+def stream_reading_view(request, value):
+    """A view that consumes the request stream without going through body."""
+    request.read()
+    return HttpResponse("Hello World %s" % value)
+
+
 def csrf_view(request):
     return HttpResponse(csrf(request)["csrf_token"])
 
@@ -2953,6 +2993,121 @@ class CacheMiddlewareTest(SimpleTestCase):
         result = timeout_middleware.process_request(request)
         self.assertIsNotNone(result)
         self.assertEqual(result.content, b"Hello World 1")
+
+    def test_middleware_query(self):
+        middleware = CacheMiddleware(hello_world_view)
+        prefix_middleware = CacheMiddleware(hello_world_view, key_prefix="prefix1")
+        timeout_middleware = CacheMiddleware(hello_world_view, cache_timeout=1)
+
+        request = self.factory.query("/view/")
+
+        # Put the request through the request middleware
+        result = middleware.process_request(request)
+        self.assertIsNone(result)
+
+        response = hello_world_view(request, "1")
+
+        # Now put the response through the response middleware
+        response = middleware.process_response(request, response)
+
+        # Repeating the request should result in a cache hit
+        result = middleware.process_request(request)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.content, b"Hello World 1")
+
+        # The same request through a different middleware won't hit
+        result = prefix_middleware.process_request(request)
+        self.assertIsNone(result)
+
+        # The same request with a timeout _will_ hit
+        result = timeout_middleware.process_request(request)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.content, b"Hello World 1")
+
+    def test_middleware_query_varies_by_content(self):
+        """
+        Two QUERY requests to one URL with different content do not share a
+        cached response.
+        """
+        middleware = CacheMiddleware(hello_world_view)
+
+        first = self.factory.query(
+            "/view/", {"q": "one"}, content_type="application/json"
+        )
+        self.assertIsNone(middleware.process_request(first))
+        middleware.process_response(first, hello_world_view(first, "1"))
+
+        # A different content must miss, not serve the first response.
+        second = self.factory.query(
+            "/view/", {"q": "two"}, content_type="application/json"
+        )
+        self.assertIsNone(middleware.process_request(second))
+        middleware.process_response(second, hello_world_view(second, "2"))
+
+        self.assertEqual(middleware.process_request(first).content, b"Hello World 1")
+        self.assertEqual(middleware.process_request(second).content, b"Hello World 2")
+
+    def test_middleware_query_not_reused_for_head(self):
+        """A cached QUERY response is never served for a HEAD request."""
+        middleware = CacheMiddleware(hello_world_view)
+
+        request = self.factory.query(
+            "/view/", {"q": "one"}, content_type="application/json"
+        )
+        self.assertIsNone(middleware.process_request(request))
+        middleware.process_response(request, hello_world_view(request, "1"))
+        self.assertIsNotNone(middleware.process_request(request))
+
+        self.assertIsNone(middleware.process_request(self.factory.head("/view/")))
+
+    def test_middleware_get_after_stream_read(self):
+        """
+        Caching a GET whose view consumed the request stream still works.
+
+        Building the cache key must not reach for the content of a request that
+        does not carry any.
+        """
+        middleware = CacheMiddleware(stream_reading_view)
+
+        request = self.factory.get("/view/")
+        self.assertIsNone(middleware.process_request(request))
+        response = middleware.process_response(
+            request, stream_reading_view(request, "1")
+        )
+        self.assertEqual(response.content, b"Hello World 1")
+
+        self.assertEqual(
+            middleware.process_request(self.factory.get("/view/")).content,
+            b"Hello World 1",
+        )
+
+    def test_middleware_query_not_cached_after_stream_read(self):
+        """
+        A QUERY response is not cached when its view consumed the stream.
+
+        The content is then unreadable, so no content-aware key can be built,
+        and caching under a content-blind one could serve the response of one
+        query for another.
+        """
+        middleware = CacheMiddleware(stream_reading_view)
+
+        request = self.factory.query(
+            "/view/", {"q": "one"}, content_type="application/json"
+        )
+        self.assertIsNone(middleware.process_request(request))
+        response = middleware.process_response(
+            request, stream_reading_view(request, "1")
+        )
+        self.assertEqual(response.content, b"Hello World 1")
+
+        # Nothing was cached, so an identical request still misses.
+        self.assertIsNone(
+            middleware.process_request(
+                self.factory.query(
+                    "/view/", {"q": "one"}, content_type="application/json"
+                )
+            )
+        )
 
     def test_view_decorator(self):
         # decorate the same view with different cache decorators
@@ -3379,6 +3534,24 @@ class TestWithTemplateResponse(SimpleTestCase):
             get_cache_key(request),
             "views.decorators.cache.cache_page.settingsprefix.GET."
             "0f1c2d56633c943073c4569d9a9502fe.d41d8cd98f00b204e9800998ecf8427e",
+        )
+
+    def test_get_cache_key_with_content(self):
+        request = self.factory.query(
+            self.path, {"test": 1}, content_type="application/json"
+        )
+        template = engines["django"].from_string("This is a test")
+        response = TemplateResponse(HttpRequest(), template)
+        # Expect None if no headers have been set yet.
+        self.assertIsNone(get_cache_key(request))
+        # Set headers to an empty list.
+        learn_cache_key(request, response)
+        # The content is taken into account.
+        self.assertEqual(
+            get_cache_key(request, method="QUERY"),
+            "views.decorators.cache.cache_page.settingsprefix.QUERY."
+            "58a0a05c8a5620f813686ff969c26853.d41d8cd98f00b204e9800998ecf8427e."
+            "96db854b55b71e6b6298e93df0b6a176",
         )
 
 

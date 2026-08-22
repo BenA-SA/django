@@ -157,9 +157,18 @@ class ClientTest(TestCase):
         with self.assertRaisesMessage(TypeError, msg):
             self.client.post("/post_view/", {"value": None})
 
+    def test_query_view(self):
+        response = self.client.query(
+            "/query_view/", {"value": 37}, content_type="application/json"
+        )
+
+        self.assertContains(response, "Data received")
+        self.assertEqual(response.context["data"], 37)
+        self.assertEqual(response.templates[0].name, "QUERY Template")
+
     def test_json_serialization(self):
         """The test client serializes JSON data."""
-        methods = ("post", "put", "patch", "delete")
+        methods = ("post", "put", "patch", "delete", "query")
         tests = (
             ({"value": 37}, {"value": 37}),
             ([37, True], [37, True]),
@@ -1285,6 +1294,7 @@ class AsyncClientTest(TestCase):
             "head",
             "options",
             "trace",
+            "query",
         )
         for method_name in tests:
             with self.subTest(method=method_name):
@@ -1308,6 +1318,12 @@ class AsyncClientTest(TestCase):
         response = await self.async_client.post("/post_view/", {"value": 37})
         self.assertContains(response, "Data received: 37 is the value.")
 
+    async def test_query_data(self):
+        response = await self.async_client.query(
+            "/query_view/", {"value": 37}, content_type="application/json"
+        )
+        self.assertContains(response, "Data received: 37 is the value.")
+
     async def test_body_read_on_get_data(self):
         response = await self.async_client.get("/post_view/")
         self.assertContains(response, "Viewing GET page.")
@@ -1322,6 +1338,7 @@ class AsyncClientTest(TestCase):
             "head",
             "options",
             "trace",
+            "query",
         )
         for method in tests:
             with self.subTest(method=method):
@@ -1346,6 +1363,7 @@ class AsyncRequestFactoryTest(SimpleTestCase):
             "head",
             "options",
             "trace",
+            "query",
         )
         for method_name in tests:
             with self.subTest(method=method_name):

@@ -360,6 +360,24 @@ class RequestsTests(SimpleTestCase):
         self.assertEqual(request.body, b"name=value")
         self.assertEqual(request.read(), b"name=value")
 
+    def test_query_content_not_in_post(self):
+        """
+        QUERY request content is available from body, not POST, even when the
+        content type is a form type.
+        """
+        payload = FakePayload("name=value")
+        request = WSGIRequest(
+            {
+                "REQUEST_METHOD": "QUERY",
+                "CONTENT_TYPE": "application/x-www-form-urlencoded",
+                "CONTENT_LENGTH": len(payload),
+                "wsgi.input": payload,
+            }
+        )
+        self.assertEqual(request.body, b"name=value")
+        self.assertEqual(request.POST, {})
+        self.assertEqual(request.FILES, {})
+
     def test_value_after_read(self):
         """
         Construction of POST or body is not allowed after reading
