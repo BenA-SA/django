@@ -513,8 +513,8 @@ class RequestFactory:
     def query(
         self,
         path,
-        data=None,
-        content_type=MULTIPART_CONTENT,
+        data="",
+        content_type="application/octet-stream",
         secure=False,
         *,
         headers=None,
@@ -522,13 +522,11 @@ class RequestFactory:
         **extra,
     ):
         """Construct a QUERY request."""
-        data = self._encode_json({} if data is None else data, content_type)
-        body_data = self._encode_data(data, content_type)
-
+        data = self._encode_json(data, content_type)
         return self.generic(
             "QUERY",
             path,
-            body_data,
+            data,
             content_type,
             secure=secure,
             headers=headers,
@@ -1211,8 +1209,8 @@ class Client(ClientMixin, RequestFactory):
     def query(
         self,
         path,
-        data=None,
-        content_type=MULTIPART_CONTENT,
+        data="",
+        content_type="application/octet-stream",
         follow=False,
         secure=False,
         *,
@@ -1603,8 +1601,8 @@ class AsyncClient(ClientMixin, AsyncRequestFactory):
     async def query(
         self,
         path,
-        data=None,
-        content_type=MULTIPART_CONTENT,
+        data="",
+        content_type="application/octet-stream",
         follow=False,
         secure=False,
         *,
